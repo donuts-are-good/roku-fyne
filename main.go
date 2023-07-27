@@ -39,20 +39,21 @@ func main() {
 	downBtn := widget.NewButton("Down", func() { sendCommand("Down") })
 	leftBtn := widget.NewButton("Left", func() { sendCommand("Left") })
 	rightBtn := widget.NewButton("Right", func() { sendCommand("Right") })
-	selectBtn := widget.NewButton("Select", func() { sendCommand("Select") })
+	selectBtn := widget.NewButton("OK", func() { sendCommand("Select") })
 	replayBtn := widget.NewButton("Replay", func() { sendCommand("Rev") })
+	optionBtn := widget.NewButton("Option", func() { sendCommand("Info") })
+	rewBtn := widget.NewButton("Rewind", func() { sendCommand("Rev") })
+	playBtn := widget.NewButton("Play/Pause", func() { sendCommand("Play") })
 	fwdBtn := widget.NewButton("Forward", func() { sendCommand("Fwd") })
-	playBtn := widget.NewButton("Play", func() { sendCommand("Play") })
 
 	// Create layout and add buttons
 	layout := container.NewVBox(
-		container.NewHBox(backBtn, homeBtn),
-		container.NewHBox(upBtn),
-		container.NewHBox(leftBtn, selectBtn, rightBtn),
-		container.NewHBox(downBtn),
-		container.NewHBox(replayBtn),
-		container.NewHBox(fwdBtn),
-		container.NewHBox(playBtn),
+		container.NewGridWithColumns(2, container.NewMax(backBtn), container.NewMax(homeBtn)),
+		container.NewGridWithColumns(1, container.NewMax(upBtn)),
+		container.NewGridWithColumns(3, container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn)),
+		container.NewGridWithColumns(1, container.NewMax(downBtn)),
+		container.NewGridWithColumns(2, container.NewMax(replayBtn), container.NewMax(optionBtn)),
+		container.NewGridWithColumns(3, container.NewMax(rewBtn), container.NewMax(playBtn), container.NewMax(fwdBtn)),
 	)
 	w.SetContent(layout)
 
