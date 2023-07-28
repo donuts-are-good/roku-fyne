@@ -1,3 +1,6 @@
+<img alt="image" src="https://github.com/donuts-are-good/roku-fyne/assets/96031819/2cafddf5-b5fa-4059-b6c1-ffafd4a6ff01">
+
+![donuts-are-good's followers](https://img.shields.io/github/followers/donuts-are-good?&color=555&style=for-the-badge&label=followers) ![donuts-are-good's stars](https://img.shields.io/github/stars/donuts-are-good?affiliations=OWNER%2CCOLLABORATOR&color=555&style=for-the-badge) ![donuts-are-good's visitors](https://komarev.com/ghpvc/?username=donuts-are-good&color=555555&style=for-the-badge&label=visitors)
 # roku-fyne
 
 i broke my roku remote so i made a new one with go and fyne 
