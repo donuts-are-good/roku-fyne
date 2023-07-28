@@ -66,6 +66,22 @@ func main() {
 	// Add the background and the controls to the window content
 	w.SetContent(container.New(layout.NewMaxLayout(), bg, controls))
 
+	// Create a new window for the "About" section
+	aboutWindow := a.NewWindow("About")
+	aboutWindow.SetContent(widget.NewLabel("This is a simple Roku remote application."))
+	aboutWindow.Resize(fyne.NewSize(300, 200))
+
+	// Create a menu
+	mainMenu := fyne.NewMainMenu(
+		// A quit item will be appended to our first menu
+		fyne.NewMenu("File", fyne.NewMenuItem("Quit", func() { a.Quit() })),
+		fyne.NewMenu("Help", fyne.NewMenuItem("About", func() {
+			aboutWindow.Show()
+		})),
+	)
+
+	w.SetMainMenu(mainMenu)
+
 	// Show and run the application
 	w.ShowAndRun()
 }
