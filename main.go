@@ -1,35 +1,83 @@
 package main
 
 import (
+	"fmt"
+	"net"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
+func getRoku() {
+	var rokuList []string
+	var m sync.Mutex
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer conn.Close()
+	oct := strings.Split(conn.LocalAddr().String(), ".")
+	client := http.Client{
+		Timeout: 200 * time.Millisecond,
+	}
+	//widget.NewSelect(rokuList, func(value string) {})
+	var wg sync.WaitGroup
+	for i:=1;i<=254;i++{
+		wg.Add(1)
+		host := fmt.Sprintf("%v.%v.%v.%v",  oct[0], oct[1], oct[2], i)
+		go func(ip string) {
+			defer wg.Done()
+			url := "http://" + ip + ":8060/query/device-info"
+		
+			resp, err := client.Get(url)
+			if err != nil {
+				if strings.Contains(err.Error(), "Client.Timeout exceeded") {
+					return
+				}
+				dialog.NewError(err, w)
+			}
+			if (resp.StatusCode == 200) {
+				m.Lock()
+				rokuList = append(rokuList, host)
+				m.Unlock()
+			}
+			resp.Body.Close()
+		}(host)
+		
+	}
+	wg.Wait()
+	dropdown.Options = rokuList
+	dropdown.SetSelected(rokuList[0])
+}
+
+var w fyne.Window
+var ipEntry string
+var dropdown *widget.Select
+
 func main() {
 	// Create a new Fyne application
+	go getRoku()
 	a := app.New()
-	w := a.NewWindow("れもとく")
-
-	// Set the window size
-	w.Resize(fyne.NewSize(200, 351))
-	w.SetFixedSize(true)
-
-	bg := canvas.NewImageFromFile("bg.png")
-	bg.FillMode = canvas.ImageFillStretch
-
+	w = a.NewWindow("Roku")
+	w.Resize(fyne.NewSize(250, 350))
+	//not used, but empty slice for filler
+	var list []string
 	// Input field for Roku IP address
-	ipEntry := widget.NewEntry()
-	ipEntry.SetPlaceHolder("Enter IP address here...")
-
+	dropdown = widget.NewSelect(list, func(ipAddr string) {
+		ipEntry = ipAddr
+	})
 	// Define a function that sends a keypress command to the Roku
 	sendCommand := func(key string) {
-		url := "http://" + ipEntry.Text + ":8060/keypress/" + key
+		url := "http://" + ipEntry + ":8060/keypress/" + key
 		resp, err := http.Post(url, "application/x-www-form-urlencoded", nil)
 		if err != nil {
 			println("Error:", err.Error())
@@ -37,34 +85,32 @@ func main() {
 		}
 		resp.Body.Close()
 	}
-
 	// Create buttons for each Roku command
-	backBtn := widget.NewButton("Back", func() { sendCommand("Back") })
-	homeBtn := widget.NewButton("Home", func() { sendCommand("Home") })
-	upBtn := widget.NewButton("Up", func() { sendCommand("Up") })
-	downBtn := widget.NewButton("Down", func() { sendCommand("Down") })
-	leftBtn := widget.NewButton("Left", func() { sendCommand("Left") })
-	rightBtn := widget.NewButton("Right", func() { sendCommand("Right") })
+
+	powerBtn := widget.NewButtonWithIcon("", theme.ErrorIcon(), func() { sendCommand("PowerOn") })
+	backBtn := widget.NewButtonWithIcon("", theme.MailReplyIcon(), func() { sendCommand("Back") })
+	homeBtn := widget.NewButtonWithIcon("", theme.HomeIcon(), func() { sendCommand("Home") })
+	upBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() { sendCommand("Up") })
+	downBtn := widget.NewButtonWithIcon("", theme.MoveDownIcon(), func() { sendCommand("Down") })
+	leftBtn := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() { sendCommand("Left") })
+	rightBtn := widget.NewButtonWithIcon("", theme.NavigateNextIcon(), func() { sendCommand("Right") })
 	selectBtn := widget.NewButton("OK", func() { sendCommand("Select") })
-	replayBtn := widget.NewButton("Replay", func() { sendCommand("InstantReplay") })
-	optionBtn := widget.NewButton("Option", func() { sendCommand("Info") })
-	rewBtn := widget.NewButton("Rew", func() { sendCommand("Rev") })
-	playBtn := widget.NewButton("Play", func() { sendCommand("Play") })
-	fwdBtn := widget.NewButton("Fwd", func() { sendCommand("Fwd") })
+	optionBtn := widget.NewButton("*", func() { sendCommand("Info") })
+	vDownBtn := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() { sendCommand("VolumeDown") })
+	vUpBtn := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() { sendCommand("VolumeUP") })
+
 
 	// Create layout and add buttons
 	controls := container.NewVBox(
-		ipEntry,
-		container.NewGridWithColumns(2, container.NewMax(backBtn), container.NewMax(homeBtn)),
-		container.NewGridWithColumns(1, container.NewMax(upBtn)),
+		dropdown,
+		container.NewGridWithColumns(3, container.NewMax(backBtn), container.NewMax(powerBtn),container.NewMax(homeBtn)),
+		container.NewGridWithColumns(3, widget.NewLabel(""), container.NewMax(upBtn), container.NewMax(optionBtn)),
 		container.NewGridWithColumns(3, container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn)),
-		container.NewGridWithColumns(1, container.NewMax(downBtn)),
-		container.NewGridWithColumns(2, container.NewMax(replayBtn), container.NewMax(optionBtn)),
-		container.NewGridWithColumns(3, container.NewMax(rewBtn), container.NewMax(playBtn), container.NewMax(fwdBtn)),
+		container.NewGridWithColumns(3, container.NewMax(vDownBtn), container.NewMax(downBtn), container.NewMax(vUpBtn)),
 	)
 
 	// Add the background and the controls to the window content
-	w.SetContent(container.New(layout.NewMaxLayout(), bg, controls))
+	w.SetContent(container.New(layout.NewMaxLayout(), controls))
 
 	// Create a new window for the "About" section
 	aboutWindow := a.NewWindow("About")
@@ -79,9 +125,25 @@ func main() {
 			aboutWindow.Show()
 		})),
 	)
+	w.Canvas().SetOnTypedKey(func (k *fyne.KeyEvent) {
+		switch k.Name {
+		case fyne.KeyLeft:
+				sendCommand("Left")
+		case fyne.KeyRight:
+				sendCommand("Right")
+		case fyne.KeySpace:
+			sendCommand("Select")
+		case fyne.KeyUp:
+				sendCommand("Up")
+		case fyne.KeyDown:
+				sendCommand("Down")
+		case fyne.KeyBackspace:
+			sendCommand("Back")
+		}
 
+	})
 	w.SetMainMenu(mainMenu)
-
 	// Show and run the application
 	w.ShowAndRun()
+	
 }
