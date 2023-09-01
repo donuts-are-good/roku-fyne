@@ -17,7 +17,7 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-func getRoku() {
+func getRoku(ScanTime int) {
 	var rokuList []string
 	var m sync.Mutex
 	conn, err := net.Dial("udp", "8.8.8.8:80")
@@ -27,7 +27,7 @@ func getRoku() {
 	defer conn.Close()
 	oct := strings.Split(conn.LocalAddr().String(), ".")
 	client := http.Client{
-		Timeout: 200 * time.Millisecond,
+		Timeout: time.Duration(ScanTime) * time.Millisecond,
 	}
 	//widget.NewSelect(rokuList, func(value string) {})
 	var wg sync.WaitGroup
@@ -37,7 +37,6 @@ func getRoku() {
 		go func(ip string) {
 			defer wg.Done()
 			url := "http://" + ip + ":8060/query/device-info"
-		
 			resp, err := client.Get(url)
 			if err != nil {
 				if strings.Contains(err.Error(), "Client.Timeout exceeded") {
@@ -64,8 +63,9 @@ var ipEntry string
 var dropdown *widget.Select
 
 func main() {
+	//start looking for Roku TVs on the local network.
+	go getRoku(200)
 	// Create a new Fyne application
-	go getRoku()
 	a := app.New()
 	w = a.NewWindow("Roku")
 	w.Resize(fyne.NewSize(250, 350))
@@ -87,7 +87,8 @@ func main() {
 	}
 	// Create buttons for each Roku command
 
-	powerBtn := widget.NewButtonWithIcon("", theme.ErrorIcon(), func() { sendCommand("PowerOn") })
+	powerOnBtn := widget.NewButton("On", func() { sendCommand("PowerOn") })
+	powerOffBtn := widget.NewButton("Off", func() { sendCommand("PowerOff") })
 	backBtn := widget.NewButtonWithIcon("", theme.MailReplyIcon(), func() { sendCommand("Back") })
 	homeBtn := widget.NewButtonWithIcon("", theme.HomeIcon(), func() { sendCommand("Home") })
 	upBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() { sendCommand("Up") })
@@ -95,7 +96,7 @@ func main() {
 	leftBtn := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() { sendCommand("Left") })
 	rightBtn := widget.NewButtonWithIcon("", theme.NavigateNextIcon(), func() { sendCommand("Right") })
 	selectBtn := widget.NewButton("OK", func() { sendCommand("Select") })
-	optionBtn := widget.NewButton("*", func() { sendCommand("Info") })
+	optionBtn := widget.NewButtonWithIcon("", theme.SettingsIcon(), func() { sendCommand("Info") })
 	vDownBtn := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() { sendCommand("VolumeDown") })
 	vUpBtn := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() { sendCommand("VolumeUP") })
 
@@ -103,10 +104,13 @@ func main() {
 	// Create layout and add buttons
 	controls := container.NewVBox(
 		dropdown,
-		container.NewGridWithColumns(3, container.NewMax(backBtn), container.NewMax(powerBtn),container.NewMax(homeBtn)),
-		container.NewGridWithColumns(3, widget.NewLabel(""), container.NewMax(upBtn), container.NewMax(optionBtn)),
-		container.NewGridWithColumns(3, container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn)),
-		container.NewGridWithColumns(3, container.NewMax(vDownBtn), container.NewMax(downBtn), container.NewMax(vUpBtn)),
+		container.NewGridWithColumns(2, powerOffBtn, powerOnBtn),
+		container.NewGridWithColumns(3, 
+			container.NewMax(backBtn),container.NewMax(optionBtn),container.NewMax(homeBtn),
+			widget.NewLabel(""), container.NewMax(upBtn), widget.NewLabel(""),
+			container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn),
+			container.NewMax(vDownBtn), container.NewMax(downBtn), container.NewMax(vUpBtn),
+		),
 	)
 
 	// Add the background and the controls to the window content
@@ -120,10 +124,24 @@ func main() {
 	// Create a menu
 	mainMenu := fyne.NewMainMenu(
 		// A quit item will be appended to our first menu
-		fyne.NewMenu("File", fyne.NewMenuItem("Quit", func() { a.Quit() })),
+		fyne.NewMenu("File", 
+			fyne.NewMenuItem("Add TV", func() { 
+				dialog.NewEntryDialog("Add TV", "IP", func(IPAddr string) {
+					dropdown.Options = append(dropdown.Options, IPAddr)
+			}, w).Show()
+			}),
+			fyne.NewMenuItem("Scan for Roku", func() { 
+				dropdown.Options = []string{"Please Wait..."}
+				dropdown.SetSelectedIndex(0)
+				dropdown.Refresh()
+				getRoku(500)
+		 	}),
+			fyne.NewMenuItem("Quit", func() { a.Quit() }),
+		),
 		fyne.NewMenu("Help", fyne.NewMenuItem("About", func() {
 			aboutWindow.Show()
 		})),
+
 	)
 	w.Canvas().SetOnTypedKey(func (k *fyne.KeyEvent) {
 		switch k.Name {
