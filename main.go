@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"embed"
 	"fmt"
+	"image"
 	"net"
 	"net/http"
 	"strings"
@@ -19,6 +22,7 @@ import (
 )
 
 func getRoku(ScanTime int) {
+	//can't define the Add TV option here or the discovred IPs will mess up the dropdown
 	var rokuList []string
 	var m sync.Mutex
 	conn, err := net.Dial("udp", "8.8.8.8:80")
@@ -75,6 +79,9 @@ var w fyne.Window
 var ipEntry string
 var dropdown *widget.Select
 
+//go:embed bg.png
+var importPic embed.FS
+
 func main() {
 	//start looking for Roku TVs on the local network.
 	go getRoku(200)
@@ -82,7 +89,15 @@ func main() {
 	a := app.New()
 	w = a.NewWindow("Roku")
 	w.Resize(fyne.NewSize(225, 350))
-	rokuImage := canvas.NewImageFromFile("bg.png")
+	pic, err := importPic.ReadFile("bg.png")
+	if err != nil {
+		panic(err)
+	}
+	img, _, err := image.Decode(bytes.NewReader(pic))
+	if err != nil {
+		panic(err)
+	}
+	var rokuImage = canvas.NewImageFromImage(img)
 	rokuImage.FillMode = canvas.ImageFillContain
 	// Input field for Roku IP address. Fields defined in getRoku()
 	dropdown = widget.NewSelect([]string{}, func(ipAddr string) {
