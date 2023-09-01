@@ -32,9 +32,9 @@ func getRoku(ScanTime int) {
 	}
 	//widget.NewSelect(rokuList, func(value string) {})
 	var wg sync.WaitGroup
-	for i:=1;i<=254;i++{
+	for i := 1; i <= 254; i++ {
 		wg.Add(1)
-		host := fmt.Sprintf("%v.%v.%v.%v",  oct[0], oct[1], oct[2], i)
+		host := fmt.Sprintf("%v.%v.%v.%v", oct[0], oct[1], oct[2], i)
 		go func(ip string) {
 			defer wg.Done()
 			url := "http://" + ip + ":8060/query/device-info"
@@ -45,18 +45,30 @@ func getRoku(ScanTime int) {
 				}
 				dialog.NewError(err, w)
 			}
-			if (resp.StatusCode == 200) {
+			if resp.StatusCode == 200 {
 				m.Lock()
 				rokuList = append(rokuList, host)
 				m.Unlock()
 			}
 			resp.Body.Close()
 		}(host)
-		
+
 	}
 	wg.Wait()
+	rokuList = append(rokuList, "(Add TV)")
 	dropdown.Options = rokuList
-	dropdown.SetSelected(rokuList[0])
+	dropdown.SetSelectedIndex(0)
+	dropdown.OnChanged = func(value string) {
+		if value == "(Add TV)" {
+			dialog.NewEntryDialog("Add TV", "IP", func(IPAddr string) {
+				//Prepend IP to keep Add Tv at the bottom without creating a new slice.
+				dropdown.Options = append(dropdown.Options, "PlaceHolder")
+				copy(dropdown.Options[1:], dropdown.Options)
+				dropdown.Options[0] = IPAddr
+				dropdown.SetSelectedIndex(0)
+			}, w).Show()
+		}
+	}
 }
 
 var w fyne.Window
@@ -105,8 +117,8 @@ func main() {
 	controls := container.NewVBox(
 		dropdown,
 		container.NewGridWithColumns(2, powerOffBtn, powerOnBtn),
-		container.NewGridWithColumns(3, 
-			container.NewMax(backBtn),container.NewMax(optionBtn),container.NewMax(homeBtn),
+		container.NewGridWithColumns(3,
+			container.NewMax(backBtn), container.NewMax(optionBtn), container.NewMax(homeBtn),
 			widget.NewLabel(""), container.NewMax(upBtn), widget.NewLabel(""),
 			container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn),
 			container.NewMax(vDownBtn), container.NewMax(downBtn), container.NewMax(vUpBtn),
@@ -126,26 +138,25 @@ func main() {
 	// Create a menu
 	mainMenu := fyne.NewMainMenu(
 		// A quit item will be appended to our first menu
-		fyne.NewMenu("File", 
-			fyne.NewMenuItem("Add TV", func() { 
+		fyne.NewMenu("File",
+			fyne.NewMenuItem("Add TV", func() {
 				dialog.NewEntryDialog("Add TV", "IP", func(IPAddr string) {
 					dropdown.Options = append(dropdown.Options, IPAddr)
-			}, w).Show()
+				}, w).Show()
 			}),
-			fyne.NewMenuItem("Scan for Roku", func() { 
+			fyne.NewMenuItem("Scan for Roku", func() {
 				dropdown.Options = []string{"Please Wait..."}
 				dropdown.SetSelectedIndex(0)
 				dropdown.Refresh()
 				getRoku(500)
-		 	}),
+			}),
 			fyne.NewMenuItem("Quit", func() { a.Quit() }),
 		),
 		fyne.NewMenu("Help", fyne.NewMenuItem("About", func() {
 			aboutWindow.Show()
 		})),
-
 	)
-	w.Canvas().SetOnTypedKey(func (k *fyne.KeyEvent) {
+	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
 		switch k.Name {
 		case fyne.KeyLeft:
 			sendCommand("Left")
@@ -162,11 +173,10 @@ func main() {
 		case "Return":
 			sendCommand("Select")
 		}
-	
 
 	})
 	w.SetMainMenu(mainMenu)
 	// Show and run the application
 	w.ShowAndRun()
-	
+
 }
