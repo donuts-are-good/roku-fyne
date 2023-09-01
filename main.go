@@ -10,6 +10,7 @@ import (
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
@@ -68,7 +69,9 @@ func main() {
 	// Create a new Fyne application
 	a := app.New()
 	w = a.NewWindow("Roku")
-	w.Resize(fyne.NewSize(250, 350))
+	w.Resize(fyne.NewSize(225, 350))
+	rokuImage := canvas.NewImageFromFile("bg.png")
+	rokuImage.FillMode = canvas.ImageFillContain
 	//not used, but empty slice for filler
 	var list []string
 	// Input field for Roku IP address
@@ -100,7 +103,6 @@ func main() {
 	vDownBtn := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() { sendCommand("VolumeDown") })
 	vUpBtn := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() { sendCommand("VolumeUP") })
 
-
 	// Create layout and add buttons
 	controls := container.NewVBox(
 		dropdown,
@@ -111,6 +113,8 @@ func main() {
 			container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn),
 			container.NewMax(vDownBtn), container.NewMax(downBtn), container.NewMax(vUpBtn),
 		),
+		//Empty label required to get image to play nice
+		container.NewGridWithRows(2, widget.NewLabel(""), rokuImage),
 	)
 
 	// Add the background and the controls to the window content
