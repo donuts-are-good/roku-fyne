@@ -72,10 +72,8 @@ func main() {
 	w.Resize(fyne.NewSize(225, 350))
 	rokuImage := canvas.NewImageFromFile("bg.png")
 	rokuImage.FillMode = canvas.ImageFillContain
-	//not used, but empty slice for filler
-	var list []string
-	// Input field for Roku IP address
-	dropdown = widget.NewSelect(list, func(ipAddr string) {
+	// Input field for Roku IP address. Fields defined in getRoku()
+	dropdown = widget.NewSelect([]string{}, func(ipAddr string) {
 		ipEntry = ipAddr
 	})
 	// Define a function that sends a keypress command to the Roku
@@ -150,18 +148,21 @@ func main() {
 	w.Canvas().SetOnTypedKey(func (k *fyne.KeyEvent) {
 		switch k.Name {
 		case fyne.KeyLeft:
-				sendCommand("Left")
+			sendCommand("Left")
 		case fyne.KeyRight:
-				sendCommand("Right")
+			sendCommand("Right")
 		case fyne.KeySpace:
 			sendCommand("Select")
 		case fyne.KeyUp:
-				sendCommand("Up")
+			sendCommand("Up")
 		case fyne.KeyDown:
-				sendCommand("Down")
+			sendCommand("Down")
 		case fyne.KeyBackspace:
 			sendCommand("Back")
+		case "Return":
+			sendCommand("Select")
 		}
+	
 
 	})
 	w.SetMainMenu(mainMenu)
