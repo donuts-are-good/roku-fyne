@@ -30,7 +30,8 @@ func getRoku(ScanTime int) {
 		fmt.Println(err)
 	}
 	defer conn.Close()
-	oct := strings.Split(conn.LocalAddr().String(), ".")
+	fmt.Println(conn.LocalAddr().(*net.UDPAddr).String())
+	oct := strings.Split(conn.LocalAddr().(*net.UDPAddr).String(), ".")
 	client := http.Client{
 		Timeout: time.Duration(ScanTime) * time.Millisecond,
 	}
@@ -71,6 +72,8 @@ func getRoku(ScanTime int) {
 				dropdown.Options[0] = IPAddr
 				dropdown.SetSelectedIndex(0)
 			}, w).Show()
+		} else {
+			ipEntry = value
 		}
 	}
 }
@@ -105,10 +108,15 @@ func main() {
 	})
 	// Define a function that sends a keypress command to the Roku
 	sendCommand := func(key string) {
+		//original timeout is something crazy like 10 or 15 seconds so 
+		client := http.Client{
+			Timeout: 1 * time.Second,
+		}
 		url := "http://" + ipEntry + ":8060/keypress/" + key
-		resp, err := http.Post(url, "application/x-www-form-urlencoded", nil)
+		resp, err := client.Post(url, "application/x-www-form-urlencoded", nil)
 		if err != nil {
-			println("Error:", err.Error())
+			dialog.NewCustom("Error", "Ok", widget.NewLabel("TV not responding. Try Again."), w).Show()
+			fmt.Println(err.Error())
 			return
 		}
 		resp.Body.Close()
