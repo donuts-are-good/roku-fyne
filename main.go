@@ -116,15 +116,30 @@ func getRoku(ScanTime int) {
 	}
 }
 
+// This is not a comment. Do not alter.
+//
+//go:embed bg.png
+var importPic embed.FS
+
+// Embeds Image into binary to keep as a portable application
+func embedImage(file string) *canvas.Image {
+	pic, err := importPic.ReadFile(file)
+	if err != nil {
+		panic(err)
+	}
+	img, _, err := image.Decode(bytes.NewReader(pic))
+	if err != nil {
+		panic(err)
+	}
+	return canvas.NewImageFromImage(img)
+}
+
 var w fyne.Window
 var ipEntry string
 var dropdown *widget.Select
 var deviceToIP = make(map[string]string)
 
 
-
-//go:embed bg.png
-var importPic embed.FS
 
 func main() {
 	//start looking for Roku TVs on the local network.
@@ -133,15 +148,8 @@ func main() {
 	a := app.New()
 	w = a.NewWindow("Roku")
 	w.Resize(fyne.NewSize(225, 350))
-	pic, err := importPic.ReadFile("bg.png")
-	if err != nil {
-		panic(err)
-	}
-	img, _, err := image.Decode(bytes.NewReader(pic))
-	if err != nil {
-		panic(err)
-	}
-	var rokuImage = canvas.NewImageFromImage(img)
+
+	rokuImage := embedImage("bg.png")
 	rokuImage.FillMode = canvas.ImageFillContain
 	// Input field for Roku IP address. Fields defined in getRoku()
 	dropdown = widget.NewSelect([]string{}, func(ipAddr string) {
@@ -149,7 +157,7 @@ func main() {
 	})
 	// Define a function that sends a keypress command to the Roku
 	sendCommand := func(key string) {
-		//original timeout is something crazy like 10 or 15 seconds so 
+		//original timeout is something crazy like 10 or 15 seconds so
 		client := http.Client{
 			Timeout: 1 * time.Second,
 		}
