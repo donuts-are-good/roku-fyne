@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"io/ioutil"
+	"encoding/xml"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
@@ -20,6 +22,48 @@ import (
 	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
+
+type rokuDevice struct {
+	Name string `xml:"friendly-device-name"`
+	Location string `xml:"user-device-location"`
+	RealName string `xml:"user-device-name"`
+}
+
+func queryRoku(ip string, client http.Client) string{
+	url := "http://" + ip + ":8060/query/device-info"
+			resp, err := client.Get(url)
+			if err != nil {
+				if strings.Contains(err.Error(), "Client.Timeout exceeded") {
+					return "timeout"
+				}
+				dialog.NewError(err, w)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					fmt.Println(err)
+				}
+				var rokuDevice rokuDevice
+				xml.Unmarshal(body, &rokuDevice)
+				if len(rokuDevice.Location) > 1 {
+				deviceToIP[rokuDevice.Location] = ip
+				} else {
+					deviceToIP[ip] = ip
+				}
+				return rokuDevice.Location
+			} else {
+				deviceToIP[ip] = ip
+				return ip
+			}
+}
+
+func getClient(ScanTime int) http.Client{
+	client := http.Client{
+		Timeout: time.Duration(ScanTime) * time.Millisecond,
+	}
+	return client
+}
 
 func getRoku(ScanTime int) {
 	//can't define the Add TV option here or the discovred IPs will mess up the dropdown
@@ -32,31 +76,23 @@ func getRoku(ScanTime int) {
 	defer conn.Close()
 	fmt.Println(conn.LocalAddr().(*net.UDPAddr).String())
 	oct := strings.Split(conn.LocalAddr().(*net.UDPAddr).String(), ".")
-	client := http.Client{
-		Timeout: time.Duration(ScanTime) * time.Millisecond,
-	}
+	client := getClient(200)
 	//widget.NewSelect(rokuList, func(value string) {})
 	var wg sync.WaitGroup
 	for i := 1; i <= 254; i++ {
 		wg.Add(1)
 		host := fmt.Sprintf("%v.%v.%v.%v", oct[0], oct[1], oct[2], i)
-		go func(ip string) {
+		go func(ip string, client http.Client) {
 			defer wg.Done()
-			url := "http://" + ip + ":8060/query/device-info"
-			resp, err := client.Get(url)
-			if err != nil {
-				if strings.Contains(err.Error(), "Client.Timeout exceeded") {
-					return
-				}
-				dialog.NewError(err, w)
-			}
-			if resp.StatusCode == 200 {
+			rokuItem := queryRoku(ip, client)
+			if rokuItem != "timeout" {
 				m.Lock()
-				rokuList = append(rokuList, host)
+				rokuList = append(rokuList, rokuItem)
 				m.Unlock()
 			}
-			resp.Body.Close()
-		}(host)
+			
+
+		}(host, client)
 
 	}
 	wg.Wait()
@@ -69,11 +105,13 @@ func getRoku(ScanTime int) {
 				//Prepend IP to keep Add Tv at the bottom without creating a new slice.
 				dropdown.Options = append(dropdown.Options, "PlaceHolder")
 				copy(dropdown.Options[1:], dropdown.Options)
-				dropdown.Options[0] = IPAddr
+				client := getClient(400)
+				rokuItem := queryRoku(IPAddr, client)
+				dropdown.Options[0] = rokuItem
 				dropdown.SetSelectedIndex(0)
 			}, w).Show()
 		} else {
-			ipEntry = value
+			ipEntry = deviceToIP[value]
 		}
 	}
 }
@@ -81,13 +119,16 @@ func getRoku(ScanTime int) {
 var w fyne.Window
 var ipEntry string
 var dropdown *widget.Select
+var deviceToIP = make(map[string]string)
+
+
 
 //go:embed bg.png
 var importPic embed.FS
 
 func main() {
 	//start looking for Roku TVs on the local network.
-	go getRoku(200)
+	go getRoku(400)
 	// Create a new Fyne application
 	a := app.New()
 	w = a.NewWindow("Roku")
