@@ -1,70 +1,206 @@
 package main
 
 import (
+	"bytes"
+	"embed"
+	"fmt"
+	"image"
+	"net"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
+	"io/ioutil"
+	"encoding/xml"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/canvas"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/layout"
+	"fyne.io/fyne/v2/theme"
 	"fyne.io/fyne/v2/widget"
 )
 
+type rokuDevice struct {
+	Name string `xml:"friendly-device-name"`
+	Location string `xml:"user-device-location"`
+	RealName string `xml:"user-device-name"`
+}
+
+func queryRoku(ip string, client http.Client) string{
+	url := "http://" + ip + ":8060/query/device-info"
+			resp, err := client.Get(url)
+			if err != nil {
+				if strings.Contains(err.Error(), "Client.Timeout exceeded") {
+					return "timeout"
+				}
+				dialog.NewError(err, w)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode == 200 {
+				body, err := ioutil.ReadAll(resp.Body)
+				if err != nil {
+					fmt.Println(err)
+				}
+				var rokuDevice rokuDevice
+				xml.Unmarshal(body, &rokuDevice)
+				if len(rokuDevice.Location) > 1 {
+				deviceToIP[rokuDevice.Location] = ip
+				} else {
+					deviceToIP[ip] = ip
+				}
+				return rokuDevice.Location
+			} else {
+				deviceToIP[ip] = ip
+				return ip
+			}
+}
+
+func getClient(ScanTime int) http.Client{
+	client := http.Client{
+		Timeout: time.Duration(ScanTime) * time.Millisecond,
+	}
+	return client
+}
+
+func getRoku(ScanTime int) {
+	//can't define the Add TV option here or the discovred IPs will mess up the dropdown
+	var rokuList []string
+	var m sync.Mutex
+	conn, err := net.Dial("udp", "8.8.8.8:80")
+	if err != nil {
+		fmt.Println(err)
+	}
+	defer conn.Close()
+	fmt.Println(conn.LocalAddr().(*net.UDPAddr).String())
+	oct := strings.Split(conn.LocalAddr().(*net.UDPAddr).String(), ".")
+	client := getClient(200)
+	//widget.NewSelect(rokuList, func(value string) {})
+	var wg sync.WaitGroup
+	for i := 1; i <= 254; i++ {
+		wg.Add(1)
+		host := fmt.Sprintf("%v.%v.%v.%v", oct[0], oct[1], oct[2], i)
+		go func(ip string, client http.Client) {
+			defer wg.Done()
+			rokuItem := queryRoku(ip, client)
+			if rokuItem != "timeout" {
+				m.Lock()
+				rokuList = append(rokuList, rokuItem)
+				m.Unlock()
+			}
+			
+
+		}(host, client)
+
+	}
+	wg.Wait()
+	rokuList = append(rokuList, "(Add TV)")
+	dropdown.Options = rokuList
+	dropdown.SetSelectedIndex(0)
+	dropdown.OnChanged = func(value string) {
+		if value == "(Add TV)" {
+			dialog.NewEntryDialog("Add TV", "IP", func(IPAddr string) {
+				//Prepend IP to keep Add Tv at the bottom without creating a new slice.
+				dropdown.Options = append(dropdown.Options, "PlaceHolder")
+				copy(dropdown.Options[1:], dropdown.Options)
+				client := getClient(400)
+				rokuItem := queryRoku(IPAddr, client)
+				dropdown.Options[0] = rokuItem
+				dropdown.SetSelectedIndex(0)
+			}, w).Show()
+		} else {
+			ipEntry = deviceToIP[value]
+		}
+	}
+}
+
+// This is not a comment. Do not alter.
+//
+//go:embed bg.png
+var importPic embed.FS
+
+// Embeds Image into binary to keep as a portable application
+func embedImage(file string) *canvas.Image {
+	pic, err := importPic.ReadFile(file)
+	if err != nil {
+		panic(err)
+	}
+	img, _, err := image.Decode(bytes.NewReader(pic))
+	if err != nil {
+		panic(err)
+	}
+	return canvas.NewImageFromImage(img)
+}
+
+var w fyne.Window
+var ipEntry string
+var dropdown *widget.Select
+var deviceToIP = make(map[string]string)
+
+
+
 func main() {
+	//start looking for Roku TVs on the local network.
+	go getRoku(400)
 	// Create a new Fyne application
 	a := app.New()
-	w := a.NewWindow("れもとく")
+	w = a.NewWindow("Roku")
+	w.Resize(fyne.NewSize(225, 350))
 
-	// Set the window size
-	w.Resize(fyne.NewSize(200, 351))
-	w.SetFixedSize(true)
-
-	bg := canvas.NewImageFromFile("bg.png")
-	bg.FillMode = canvas.ImageFillStretch
-
-	// Input field for Roku IP address
-	ipEntry := widget.NewEntry()
-	ipEntry.SetPlaceHolder("Enter IP address here...")
-
+	rokuImage := embedImage("bg.png")
+	rokuImage.FillMode = canvas.ImageFillContain
+	// Input field for Roku IP address. Fields defined in getRoku()
+	dropdown = widget.NewSelect([]string{}, func(ipAddr string) {
+		ipEntry = ipAddr
+	})
 	// Define a function that sends a keypress command to the Roku
 	sendCommand := func(key string) {
-		url := "http://" + ipEntry.Text + ":8060/keypress/" + key
-		resp, err := http.Post(url, "application/x-www-form-urlencoded", nil)
+		//original timeout is something crazy like 10 or 15 seconds so
+		client := http.Client{
+			Timeout: 1 * time.Second,
+		}
+		url := "http://" + ipEntry + ":8060/keypress/" + key
+		resp, err := client.Post(url, "application/x-www-form-urlencoded", nil)
 		if err != nil {
-			println("Error:", err.Error())
+			dialog.NewCustom("Error", "Ok", widget.NewLabel("TV not responding. Try Again."), w).Show()
+			fmt.Println(err.Error())
 			return
 		}
 		resp.Body.Close()
 	}
-
 	// Create buttons for each Roku command
-	backBtn := widget.NewButton("Back", func() { sendCommand("Back") })
-	homeBtn := widget.NewButton("Home", func() { sendCommand("Home") })
-	upBtn := widget.NewButton("Up", func() { sendCommand("Up") })
-	downBtn := widget.NewButton("Down", func() { sendCommand("Down") })
-	leftBtn := widget.NewButton("Left", func() { sendCommand("Left") })
-	rightBtn := widget.NewButton("Right", func() { sendCommand("Right") })
+
+	powerOnBtn := widget.NewButton("On", func() { sendCommand("PowerOn") })
+	powerOffBtn := widget.NewButton("Off", func() { sendCommand("PowerOff") })
+	backBtn := widget.NewButtonWithIcon("", theme.MailReplyIcon(), func() { sendCommand("Back") })
+	homeBtn := widget.NewButtonWithIcon("", theme.HomeIcon(), func() { sendCommand("Home") })
+	upBtn := widget.NewButtonWithIcon("", theme.MoveUpIcon(), func() { sendCommand("Up") })
+	downBtn := widget.NewButtonWithIcon("", theme.MoveDownIcon(), func() { sendCommand("Down") })
+	leftBtn := widget.NewButtonWithIcon("", theme.NavigateBackIcon(), func() { sendCommand("Left") })
+	rightBtn := widget.NewButtonWithIcon("", theme.NavigateNextIcon(), func() { sendCommand("Right") })
 	selectBtn := widget.NewButton("OK", func() { sendCommand("Select") })
-	replayBtn := widget.NewButton("Replay", func() { sendCommand("InstantReplay") })
-	optionBtn := widget.NewButton("Option", func() { sendCommand("Info") })
-	rewBtn := widget.NewButton("Rew", func() { sendCommand("Rev") })
-	playBtn := widget.NewButton("Play", func() { sendCommand("Play") })
-	fwdBtn := widget.NewButton("Fwd", func() { sendCommand("Fwd") })
+	optionBtn := widget.NewButtonWithIcon("", theme.SettingsIcon(), func() { sendCommand("Info") })
+	vDownBtn := widget.NewButtonWithIcon("", theme.VolumeDownIcon(), func() { sendCommand("VolumeDown") })
+	vUpBtn := widget.NewButtonWithIcon("", theme.VolumeUpIcon(), func() { sendCommand("VolumeUP") })
 
 	// Create layout and add buttons
 	controls := container.NewVBox(
-		ipEntry,
-		container.NewGridWithColumns(2, container.NewMax(backBtn), container.NewMax(homeBtn)),
-		container.NewGridWithColumns(1, container.NewMax(upBtn)),
-		container.NewGridWithColumns(3, container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn)),
-		container.NewGridWithColumns(1, container.NewMax(downBtn)),
-		container.NewGridWithColumns(2, container.NewMax(replayBtn), container.NewMax(optionBtn)),
-		container.NewGridWithColumns(3, container.NewMax(rewBtn), container.NewMax(playBtn), container.NewMax(fwdBtn)),
+		dropdown,
+		container.NewGridWithColumns(2, powerOffBtn, powerOnBtn),
+		container.NewGridWithColumns(3,
+			container.NewMax(backBtn), container.NewMax(optionBtn), container.NewMax(homeBtn),
+			widget.NewLabel(""), container.NewMax(upBtn), widget.NewLabel(""),
+			container.NewMax(leftBtn), container.NewMax(selectBtn), container.NewMax(rightBtn),
+			container.NewMax(vDownBtn), container.NewMax(downBtn), container.NewMax(vUpBtn),
+		),
+		//Empty label required to get image to play nice
+		container.NewGridWithRows(2, widget.NewLabel(""), rokuImage),
 	)
 
 	// Add the background and the controls to the window content
-	w.SetContent(container.New(layout.NewMaxLayout(), bg, controls))
+	w.SetContent(container.New(layout.NewMaxLayout(), controls))
 
 	// Create a new window for the "About" section
 	aboutWindow := a.NewWindow("About")
@@ -74,14 +210,45 @@ func main() {
 	// Create a menu
 	mainMenu := fyne.NewMainMenu(
 		// A quit item will be appended to our first menu
-		fyne.NewMenu("File", fyne.NewMenuItem("Quit", func() { a.Quit() })),
+		fyne.NewMenu("File",
+			fyne.NewMenuItem("Add TV", func() {
+				dialog.NewEntryDialog("Add TV", "IP", func(IPAddr string) {
+					dropdown.Options = append(dropdown.Options, IPAddr)
+				}, w).Show()
+			}),
+			fyne.NewMenuItem("Scan for Roku", func() {
+				dropdown.Options = []string{"Please Wait..."}
+				dropdown.SetSelectedIndex(0)
+				dropdown.Refresh()
+				getRoku(500)
+			}),
+			fyne.NewMenuItem("Quit", func() { a.Quit() }),
+		),
 		fyne.NewMenu("Help", fyne.NewMenuItem("About", func() {
 			aboutWindow.Show()
 		})),
 	)
+	w.Canvas().SetOnTypedKey(func(k *fyne.KeyEvent) {
+		switch k.Name {
+		case fyne.KeyLeft:
+			sendCommand("Left")
+		case fyne.KeyRight:
+			sendCommand("Right")
+		case fyne.KeySpace:
+			sendCommand("Select")
+		case fyne.KeyUp:
+			sendCommand("Up")
+		case fyne.KeyDown:
+			sendCommand("Down")
+		case fyne.KeyBackspace:
+			sendCommand("Back")
+		case "Return":
+			sendCommand("Select")
+		}
 
+	})
 	w.SetMainMenu(mainMenu)
-
 	// Show and run the application
 	w.ShowAndRun()
+
 }
